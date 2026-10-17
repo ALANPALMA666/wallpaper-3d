@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Estudio 3D Anatómico con Mapa de Profundidad</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background-color: #030406; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; }
+    #canvas-container { width: 100vw; height: 100vh; display: block; }
+    #ui-panel {
+      position: absolute; top: 20px; left: 20px;
+      background: rgba(10, 13, 20, 0.94);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px; padding: 16px; color: #f1f5f9;
+      display: flex; flex-direction: column; gap: 11px;
+      width: 320px; max-height: 94vh; overflow-y: auto; z-index: 10;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+      transition: all 0.25s ease;
+    }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; }
+    .panel-title { font-weight: 700; font-size: 13px; letter-spacing: 0.8px; text-transform: uppercase; color: #38bdf8; }
+    .btn-min {
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+      color: #94a3b8; width: 24px; height: 24px; border-radius: 6px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    #ui-panel.minimized { width: auto; padding: 10px 14px; }
+    #ui-panel.minimized #panel-content { display: none; }
+    #panel-content { display: flex; flex-direction: column; gap: 10px; }
+    .file-box {
+      display: flex; flex-direction: column; gap: 4px;
+      background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .file-box span { font-size: 11px; color: #cbd5e1; font-weight: 500; }
+    input[type="file"] { font-size: 11px; color: #94a3b8; }
+    .control-group { display: flex; flex-direction: column; gap: 3px; }
+    .control-group label { font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; }
+    input[type="range"] {
+      -webkit-appearance: none; width: 100%; height: 5px;
+      border-radius: 5px; background: rgba(255,255,255,0.15); outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px;
+      border-radius: 50%; background: #38bdf8; cursor: pointer;
+    }
+    .btn-action {
+      background: #0284c7; border: 1px solid #38bdf8; color: #fff;
+      padding: 9px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 0.2s; text-align: center;
+    }
+    .btn-action:hover { background: #0369a1; }
+    .btn-moto { background: #059669; border: 1px solid #10b981; }
+    .btn-moto:hover { background: #047857; }
+    .btn-secondary {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+      color: #cbd5e1; padding: 7px; border-radius: 6px; font-size: 11px; cursor: pointer;
+    }
+    .hint { font-size: 10px; color: #64748b; line-height: 1.3; }
+    #mobile-guide {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      height: 88vh; aspect-ratio: 9 / 20;
+      border: 2px dashed rgba(56, 189, 248, 0.6);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+      pointer-events: none; display: none; border-radius: 20px; z-index: 5;
+    }
+  </style>
+</head>
+<body>
+  <div id="mobile-guide"></div>
+  <div id="ui-panel">
+    <div class="panel-header" id="panel-header">
+      <div class="panel-title">Volumen 3D Real</div>
+      <button class="btn-min" id="btn-min" title="Ocultar (Tecla M)">−</button>
+    </div>
+    <div id="panel-content">
+      <div class="file-box">
+        <span>1. Imagen principal (Color)</span>
+        <input type="file" id="img-color" accept="image/*">
+      </div>
+      <div class="file-box">
+        <span>2. Mapa de profundidad (Opcional - Grises)</span>
+        <input type="file" id="img-depth" accept="image/*">
+      </div>
+      <div class="control-group">
+        <label>Volumen / Relieve <span id="val-depth">1.6</span></label>
+        <input type="range" id="rng-depth" min="0" max="4" step="0.1" value="1.6">
+      </div>
+      <div class="control-group">
+        <label>Oscilación de movimiento <span id="val-motion">1.0</span></label>
+        <input type="range" id="rng-motion" min="0" max="3" step="0.2" value="1.0">
+      </div>
+      <div class="control-group">
+        <label>Suavizado anatómico <span id="val-smooth">18</span>px</label>
+        <input type="range" id="rng-smooth" min="4" max="40" step="2" value="18">
+      </div>
+      <button class="btn-action btn-moto" id="btn-moto">Descargar para Motorola (20:9)</button>
+      <button class="btn-action" id="btn-pc">Descargar Wallpaper 4K PC</button>
+      <button class="btn-secondary" id="btn-guide">Ver marco móvil</button>
+      <button class="btn-secondary" id="btn-reset">Centrar vista</button>
+      <div class="hint">Compatible con mapas de profundidad (LeiaPix / Depth Anything) y oscilación automática.</div>
+    </div>
+  </div>
+  <div id="canvas-container"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script>
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x030406);
+    const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0, 14);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    container.appendChild(renderer.domElement);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const lightFront = new THREE.DirectionalLight(0xffffff, 0.8);
+    lightFront.position.set(2, 4, 8);
+    scene.add(lightFront);
+    const lightSideLeft = new THREE.PointLight(0x38bdf8, 2.0, 30);
+    lightSideLeft.position.set(-10, 2, 5);
+    scene.add(lightSideLeft);
+    const lightSideRight = new THREE.PointLight(0xe11d48, 1.8, 30);
+    lightSideRight.position.set(10, -2, 5);
+    scene.add(lightSideRight);
+    let colorImg = null, customDepthImg = null, planeMesh = null, baseGeom = null;
+    function createSampleFigure() {
+      const c = document.createElement('canvas');
+      c.width = 1024; c.height = 1024;
+      const ctx = c.getContext('2d');
+      const bg = ctx.createLinearGradient(0, 0, 0, 1024);
+      bg.addColorStop(0, '#0a0f1d'); bg.addColorStop(1, '#030509');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, 1024, 1024);
+      const bodyGrad = ctx.createRadialGradient(512, 600, 50, 512, 600, 350);
+      bodyGrad.addColorStop(0, '#38bdf8'); bodyGrad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath(); ctx.ellipse(512, 850, 320, 220, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(470, 500, 84, 150);
+      const headGrad = ctx.createRadialGradient(512, 430, 20, 512, 430, 140);
+      headGrad.addColorStop(0, '#60a5fa'); headGrad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = headGrad;
+      ctx.beginPath(); ctx.arc(512, 430, 120, 0, Math.PI * 2); ctx.fill();
+      const img = new Image(); img.src = c.toDataURL(); return img;
+    }
+    function getProcessedDepthTexture(img, blurPx) {
+      const c = document.createElement('canvas');
+      c.width = 1024; c.height = 1024;
+      const ctx = c.getContext('2d');
+      ctx.filter = `grayscale(100%) blur(${blurPx}px) contrast(120%)`;
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      const tex = new THREE.CanvasTexture(c); tex.generateMipmaps = true; return tex;
+    }
+    function buildMesh() {
+      if (!colorImg) return;
+      if (planeMesh) { scene.remove(planeMesh); planeMesh.geometry.dispose(); planeMesh.material.dispose(); }
+      const aspect = colorImg.width / colorImg.height;
+      const w = 11, h = w / aspect;
+      const blur = parseInt(document.getElementById('rng-smooth').value);
+      const depthScale = parseFloat(document.getElementById('rng-depth').value);
+      const colorTex = new THREE.Texture(colorImg); colorTex.needsUpdate = true;
+      const depthTex = customDepthImg ? getProcessedDepthTexture(customDepthImg, 2) : getProcessedDepthTexture(colorImg, blur);
+      baseGeom = new THREE.PlaneGeometry(w, h, 280, 280);
+      const mat = new THREE.MeshStandardMaterial({
+        map: colorTex, displacementMap: depthTex, displacementScale: depthScale,
+        roughness: 0.4, metalness: 0.15, side: THREE.DoubleSide
+      });
+      planeMesh = new THREE.Mesh(baseGeom, mat); scene.add(planeMesh);
+    }
+    colorImg = createSampleFigure(); colorImg.onload = () => buildMesh();
+    document.getElementById('img-color').addEventListener('change', (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = new FileReader(); r.onload = (ev) => { const i = new Image(); i.onload = () => { colorImg = i; buildMesh(); }; i.src = ev.target.result; }; r.readAsDataURL(f);
+    });
+    document.getElementById('img-depth').addEventListener('change', (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      const r = new FileReader(); r.onload = (ev) => { const i = new Image(); i.onload = () => { customDepthImg = i; buildMesh(); }; i.src = ev.target.result; }; r.readAsDataURL(f);
+    });
+    document.getElementById('rng-depth').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value); document.getElementById('val-depth').innerText = v.toFixed(1);
+      if (planeMesh) planeMesh.material.displacementScale = v;
+    });
+    document.getElementById('rng-smooth').addEventListener('change', (e) => { document.getElementById('val-smooth').innerText = e.target.value; buildMesh(); });
+    document.getElementById('rng-motion').addEventListener('input', (e) => { document.getElementById('val-motion').innerText = parseFloat(e.target.value).toFixed(1); });
+    document.getElementById('btn-reset').addEventListener('click', () => { controls.reset(); camera.position.set(0, 0, 14); });
+    const panel = document.getElementById('ui-panel'), btnMin = document.getElementById('btn-min');
+    function toggleMin() { panel.classList.toggle('minimized'); btnMin.innerText = panel.classList.contains('minimized') ? '+' : '−'; }
+    btnMin.addEventListener('click', (e) => { e.stopPropagation(); toggleMin(); });
+    document.getElementById('panel-header').addEventListener('click', () => { if (panel.classList.contains('minimized')) toggleMin(); });
+    window.addEventListener('keydown', (e) => { if (e.key === 'm' || e.key === 'M') toggleMin(); });
+    const guide = document.getElementById('mobile-guide');
+    document.getElementById('btn-guide').addEventListener('click', () => { guide.style.display = guide.style.display === 'block' ? 'none' : 'block'; });
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = filename;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    function exportRes(w, h, filename, btn) {
+      const orig = btn.innerText; btn.innerText = "Exportando..."; btn.style.pointerEvents = "none";
+      setTimeout(() => {
+        const expRenderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        expRenderer.setSize(w, h, false); expRenderer.toneMapping = renderer.toneMapping; expRenderer.toneMappingExposure = renderer.toneMappingExposure;
+        const expCam = camera.clone(); expCam.aspect = w / h; expCam.updateProjectionMatrix();
+        expRenderer.render(scene, expCam);
+        expRenderer.domElement.toBlob((blob) => { if (blob) downloadBlob(blob, filename); expRenderer.dispose(); btn.innerText = orig; btn.style.pointerEvents = "auto"; }, 'image/png');
+      }, 50);
+    }
+    document.getElementById('btn-moto').addEventListener('click', function() { exportRes(1080, 2400, 'wallpaper-moto-3d.png', this); });
+    document.getElementById('btn-pc').addEventListener('click', function() { exportRes(3840, 2160, 'wallpaper-pc-4k.png', this); });
+    let clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime(), motionAmp = parseFloat(document.getElementById('rng-motion').value);
+      if (motionAmp > 0 && planeMesh) {
+        planeMesh.rotation.y = Math.sin(t * 1.2) * 0.12 * motionAmp;
+        planeMesh.rotation.x = Math.cos(t * 0.9) * 0.06 * motionAmp;
+      }
+      controls.update(); renderer.render(scene, camera);
+    }
+    animate();
+    window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+  </script>
+</body>
+</html>
