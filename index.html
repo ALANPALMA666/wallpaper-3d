@@ -51,6 +51,10 @@
       cursor: pointer; transition: background 0.2s; text-align: center;
     }
     .btn-action:hover { background: #0369a1; }
+    .btn-video {
+      background: #8b5cf6; border: 1px solid #a78bfa;
+    }
+    .btn-video:hover { background: #7c3aed; }
     .btn-moto { background: #059669; border: 1px solid #10b981; }
     .btn-moto:hover { background: #047857; }
     .btn-secondary {
@@ -95,11 +99,15 @@
         <label>Suavizado anatómico <span id="val-smooth">18</span>px</label>
         <input type="range" id="rng-smooth" min="4" max="40" step="2" value="18">
       </div>
-      <button class="btn-action btn-moto" id="btn-moto">Descargar para Motorola (20:9)</button>
-      <button class="btn-action" id="btn-pc">Descargar Wallpaper 4K PC</button>
+
+      <!-- BOTÓN DE GRABACIÓN DE BUCLE -->
+      <button class="btn-action btn-video" id="btn-record">Grabar Bucle Animado (4s)</button>
+
+      <button class="btn-action btn-moto" id="btn-moto">Descargar foto Motorola (20:9)</button>
+      <button class="btn-action" id="btn-pc">Descargar foto 4K PC</button>
       <button class="btn-secondary" id="btn-guide">Ver marco móvil</button>
       <button class="btn-secondary" id="btn-reset">Centrar vista</button>
-      <div class="hint">Compatible con mapas de profundidad (LeiaPix / Depth Anything) y oscilación automática.</div>
+      <div class="hint">El bucle animado genera un video (.webm) que mantiene el volumen 3D activo para Lively Wallpaper o fondos dinámicos en celular.</div>
     </div>
   </div>
   <div id="canvas-container"></div>
@@ -131,6 +139,7 @@
     lightSideRight.position.set(10, -2, 5);
     scene.add(lightSideRight);
     let colorImg = null, customDepthImg = null, planeMesh = null, baseGeom = null;
+
     function createSampleFigure() {
       const c = document.createElement('canvas');
       c.width = 1024; c.height = 1024;
@@ -149,6 +158,7 @@
       ctx.beginPath(); ctx.arc(512, 430, 120, 0, Math.PI * 2); ctx.fill();
       const img = new Image(); img.src = c.toDataURL(); return img;
     }
+
     function getProcessedDepthTexture(img, blurPx) {
       const c = document.createElement('canvas');
       c.width = 1024; c.height = 1024;
@@ -157,6 +167,7 @@
       ctx.drawImage(img, 0, 0, c.width, c.height);
       const tex = new THREE.CanvasTexture(c); tex.generateMipmaps = true; return tex;
     }
+
     function buildMesh() {
       if (!colorImg) return;
       if (planeMesh) { scene.remove(planeMesh); planeMesh.geometry.dispose(); planeMesh.material.dispose(); }
@@ -173,7 +184,9 @@
       });
       planeMesh = new THREE.Mesh(baseGeom, mat); scene.add(planeMesh);
     }
+
     colorImg = createSampleFigure(); colorImg.onload = () => buildMesh();
+
     document.getElementById('img-color').addEventListener('change', (e) => {
       const f = e.target.files[0]; if (!f) return;
       const r = new FileReader(); r.onload = (ev) => { const i = new Image(); i.onload = () => { colorImg = i; buildMesh(); }; i.src = ev.target.result; }; r.readAsDataURL(f);
@@ -182,6 +195,7 @@
       const f = e.target.files[0]; if (!f) return;
       const r = new FileReader(); r.onload = (ev) => { const i = new Image(); i.onload = () => { customDepthImg = i; buildMesh(); }; i.src = ev.target.result; }; r.readAsDataURL(f);
     });
+
     document.getElementById('rng-depth').addEventListener('input', (e) => {
       const v = parseFloat(e.target.value); document.getElementById('val-depth').innerText = v.toFixed(1);
       if (planeMesh) planeMesh.material.displacementScale = v;
@@ -189,19 +203,45 @@
     document.getElementById('rng-smooth').addEventListener('change', (e) => { document.getElementById('val-smooth').innerText = e.target.value; buildMesh(); });
     document.getElementById('rng-motion').addEventListener('input', (e) => { document.getElementById('val-motion').innerText = parseFloat(e.target.value).toFixed(1); });
     document.getElementById('btn-reset').addEventListener('click', () => { controls.reset(); camera.position.set(0, 0, 14); });
+
     const panel = document.getElementById('ui-panel'), btnMin = document.getElementById('btn-min');
     function toggleMin() { panel.classList.toggle('minimized'); btnMin.innerText = panel.classList.contains('minimized') ? '+' : '−'; }
     btnMin.addEventListener('click', (e) => { e.stopPropagation(); toggleMin(); });
     document.getElementById('panel-header').addEventListener('click', () => { if (panel.classList.contains('minimized')) toggleMin(); });
     window.addEventListener('keydown', (e) => { if (e.key === 'm' || e.key === 'M') toggleMin(); });
+
     const guide = document.getElementById('mobile-guide');
     document.getElementById('btn-guide').addEventListener('click', () => { guide.style.display = guide.style.display === 'block' ? 'none' : 'block'; });
+
     function downloadBlob(blob, filename) {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a'); link.href = url; link.download = filename;
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
+
+    // GRABADOR DE VIDEO EN BUCLE
+    document.getElementById('btn-record').addEventListener('click', function() {
+      const btn = this;
+      btn.innerText = "Grabando (4s)...";
+      btn.style.pointerEvents = "none";
+
+      const stream = renderer.domElement.captureStream(60);
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        downloadBlob(blob, 'wallpaper-animado-3d.webm');
+        btn.innerText = "Grabar Bucle Animado (4s)";
+        btn.style.pointerEvents = "auto";
+      };
+
+      recorder.start();
+      setTimeout(() => { recorder.stop(); }, 4000);
+    });
+
     function exportRes(w, h, filename, btn) {
       const orig = btn.innerText; btn.innerText = "Exportando..."; btn.style.pointerEvents = "none";
       setTimeout(() => {
@@ -212,15 +252,17 @@
         expRenderer.domElement.toBlob((blob) => { if (blob) downloadBlob(blob, filename); expRenderer.dispose(); btn.innerText = orig; btn.style.pointerEvents = "auto"; }, 'image/png');
       }, 50);
     }
+
     document.getElementById('btn-moto').addEventListener('click', function() { exportRes(1080, 2400, 'wallpaper-moto-3d.png', this); });
     document.getElementById('btn-pc').addEventListener('click', function() { exportRes(3840, 2160, 'wallpaper-pc-4k.png', this); });
+
     let clock = new THREE.Clock();
     function animate() {
       requestAnimationFrame(animate);
       const t = clock.getElapsedTime(), motionAmp = parseFloat(document.getElementById('rng-motion').value);
       if (motionAmp > 0 && planeMesh) {
-        planeMesh.rotation.y = Math.sin(t * 1.2) * 0.12 * motionAmp;
-        planeMesh.rotation.x = Math.cos(t * 0.9) * 0.06 * motionAmp;
+        planeMesh.rotation.y = Math.sin(t * 1.57) * 0.14 * motionAmp;
+        planeMesh.rotation.x = Math.cos(t * 1.57) * 0.05 * motionAmp;
       }
       controls.update(); renderer.render(scene, camera);
     }
